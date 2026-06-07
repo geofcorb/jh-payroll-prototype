@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Payroll Parallel-Run Comparison — SAP → Workday</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- ===== Top bar ===== -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark">⇄</div>
+      <div>
+        <h1>Payroll Parallel-Run Comparison</h1>
+        <div class="tagline">
+          <span class="flow"><span>SAP</span><span class="arrow">→</span><span>Workday</span></span>
+          &nbsp;· component-level reconciliation &amp; discrepancy root-cause
+        </div>
+      </div>
+    </div>
+    <div class="toolbar">
+      <span class="src" id="dataSource">Sample data</span>
+      <button class="btn" id="btnImport">⭱ Import CSV</button>
+      <button class="btn" id="btnExport">⭳ Export / template</button>
+      <button class="btn" id="btnReset">↺ Reset to sample</button>
+      <button class="btn btn-primary" id="btnHelp">? Help</button>
+      <input type="file" id="fileInput" accept=".csv,text/csv" style="display:none" />
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- ===== Selector ===== -->
+    <section class="selector">
+      <div class="selector-top">
+        <div class="picker" id="empPicker">
+          <label for="empSearch">Find employee</label>
+          <div class="search-field" id="empField">
+            <span class="ico">⌕</span>
+            <input type="text" id="empSearch" placeholder="Search by name, ID, department…" autocomplete="off" />
+            <div class="results" id="empResults"></div>
+          </div>
+        </div>
+        <div class="selected-wrap">
+          <label>Selected employee</label>
+          <div class="selected-emp" id="selectedEmp"></div>
+        </div>
+      </div>
+      <div class="trend-wrap">
+        <div class="label">Pay period — net variance across runs (click to compare)</div>
+        <div class="trend-strip" id="trendStrip"></div>
+      </div>
+    </section>
+
+    <!-- ===== Results ===== -->
+    <div id="results"></div>
+  </main>
+
+  <!-- ===== Help modal ===== -->
+  <div class="modal" id="helpModal">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>How to use this tool</h2>
+        <button class="modal-close" id="helpClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>This tool compares a single employee's payroll for one pay run between the
+        <b>legacy SAP</b> system and the future <b>Workday</b> system, component by component,
+        and explains the likely <b>cause</b> of each discrepancy.</p>
+
+        <h3>Workflow</h3>
+        <ul>
+          <li><b>Find employee</b> — search by name, ID, or department and select one.</li>
+          <li><b>Pick a pay period</b> — the strip shows net variance per period; click one to drill in.</li>
+          <li>Read the <b>summary cards</b> (gross, deductions, net, employer cost), the
+            <b>reconciliation bars</b>, then the <b>component table</b> and <b>discrepancy breakdown</b>.</li>
+          <li>Click a <b>cause chip</b> to filter the table to just that type of discrepancy.</li>
+        </ul>
+
+        <h3>How variance &amp; net impact read</h3>
+        <p><b>Variance = Workday − SAP.</b> <span style="color:#1f9d57">Green</span> means Workday is higher,
+        <span style="color:#d4332f">red</span> means lower. <b>Net impact</b> shows how that line moves take-home pay
+        (earnings add to net; deductions and taxes subtract; employer items don't affect net).</p>
+
+        <h3>Discrepancy causes (auto-detected)</h3>
+        <div class="cause-key">
+          <span><b>Rate / amount difference</b></span><span>Same component, materially different value — a rate/salary/formula updated in one system only.</span>
+          <span><b>Tax configuration difference</b></span><span>A withholding differs beyond rounding — tax setup, elections, or taxable base differ.</span>
+          <span><b>Wage-type mapping gap</b></span><span>Component exists in one system only — an unmapped wage type or unconfigured pay component.</span>
+          <span><b>Proration difference</b></span><span>Different worked/paid days — mid-period hire, termination, or leave.</span>
+          <span><b>Retroactive adjustment</b></span><span>A retro line in one system only — expected to differ during parallel runs.</span>
+          <span><b>Rounding difference</b></span><span>Agreement within a few cents — different rounding rules.</span>
+        </div>
+
+        <h3>Loading your own data</h3>
+        <p>Click <b>Export / template</b> to download the current data as CSV and see the exact format,
+        then <b>Import CSV</b> to load real SAP and Workday extracts. One row per component per system. Columns:</p>
+        <p><code>system, employee_id, employee_name, department, location, pay_group, period_id, period_label,
+        period_start, period_end, pay_date, period_days, component_code, component_name, category, amount, retro, worked_days</code></p>
+        <ul>
+          <li><code>system</code> = <code>SAP</code> or <code>Workday</code>.</li>
+          <li><code>category</code> = <code>earning</code>, <code>pre_tax</code>, <code>tax</code>, <code>post_tax</code>, or <code>employer</code>.</li>
+          <li>Use the <b>same</b> <code>component_code</code> in both systems so the tool can pair them; an unpaired code is reported as a mapping gap.</li>
+          <li><code>retro</code> = <code>Y</code> for retroactive lines; <code>worked_days</code> drives proration detection (leave blank for full-period).</li>
+        </ul>
+        <p>All processing happens locally in your browser — no data leaves the page.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

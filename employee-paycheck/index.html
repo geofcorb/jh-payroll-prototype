@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your Paycheck Preview — Workday</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">
+      <div class="logo">💵</div>
+      <div>
+        <h1>Your Paycheck Preview</h1>
+        <div class="crumb">A look at your pay in our new system</div>
+      </div>
+    </div>
+    <div class="who">
+      <label for="whoSelect">Viewing as</label>
+      <select id="whoSelect" aria-label="Choose employee"></select>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div id="app"></div>
+  </main>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
