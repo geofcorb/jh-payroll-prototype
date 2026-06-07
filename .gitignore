@@ -1,0 +1,5 @@
+# macOS
+.DS_Store
+
+# Claude Code local-only settings (launch.json IS committed, on purpose)
+.claude/settings.local.json
