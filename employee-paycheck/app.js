@@ -1,9 +1,15 @@
 /* ============================================================================
-   app.js — Employee Paycheck Preview
+   app.js — Employee Paycheck Preview (Johns Hopkins University)
 
    Turns parallel-run pay data into a simple, reassuring story for an employee:
    "here's your paycheck today, here's your paycheck in the new system, here's
    why the number looks different, and here's what stays the same."
+
+   Also provides an administrative REVIEW MODE (toggle, top-right): the same page
+   an employee sees, plus explicit payroll detail (exact figures, per-check
+   columns, SAP↔Workday variance, wage-type mapping gaps) and per-employee
+   discrepancy tracking — flag lines, set a review status, and leave notes.
+   Review state is saved on the device (localStorage) and can be exported to CSV.
 
    Classic script (no modules / no fetch) so it runs from a file:// URL.
    ========================================================================== */
@@ -11,7 +17,7 @@
   'use strict';
 
   var D = window.PAYDATA;
-  var state = { empId: D.employees[0].id, showDetail: false };
+  var state = { empId: D.employees[0].id, showDetail: false, reviewMode: false };
 
   // -------------------------------------------------------------------------
   // Money helpers — employees see clean, familiar formatting.
@@ -22,8 +28,39 @@
   function money0(n) {
     return '$' + Math.round(Number(n)).toLocaleString('en-US');
   }
+  function signedMoney(n) {
+    var s = n > 0 ? '+' : (n < 0 ? '−' : '');
+    return s + '$' + Math.abs(Number(n)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
   function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
   function el(id) { return document.getElementById(id); }
+
+  // -------------------------------------------------------------------------
+  // Review state — persisted on the device. Never leaves the page.
+  // -------------------------------------------------------------------------
+  var REVIEW_KEY = 'jhu-paycheck-review-v1';
+  var reviews = loadReviews();
+
+  function loadReviews() {
+    try {
+      var raw = window.localStorage.getItem(REVIEW_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  }
+  function saveReviews() {
+    try { window.localStorage.setItem(REVIEW_KEY, JSON.stringify(reviews)); } catch (e) { /* private mode / file:// — keep in memory */ }
+  }
+  function getReview(id) {
+    var r = reviews[id];
+    if (!r) r = reviews[id] = { status: 'unreviewed', flags: {}, notes: '' };
+    if (!r.flags) r.flags = {};
+    if (!r.notes) r.notes = '';
+    if (!r.status) r.status = 'unreviewed';
+    return r;
+  }
+  function hasFlags(r) { return Object.keys(r.flags).some(function (k) { return r.flags[k]; }); }
+  function flaggedCodes(r) { return Object.keys(r.flags).filter(function (k) { return r.flags[k]; }); }
+  function statusLabel(s) { return s === 'reviewed' ? 'Reviewed' : (s === 'followup' ? 'Needs follow-up' : 'Unreviewed'); }
 
   // -------------------------------------------------------------------------
   // Computation
@@ -63,11 +100,15 @@
       var sa = emp.sap.annual[code] || 0;
       var wa = emp.workday.annual[code] || 0;
       var diff = wa - sa;
+      var hasSap = Object.prototype.hasOwnProperty.call(emp.sap.annual, code);
+      var hasWd = Object.prototype.hasOwnProperty.call(emp.workday.annual, code);
       return {
         code: code, group: info.group, label: info.label, plain: info.plain,
         isTax: !!info.isTax, varies: !!info.varies,
         sapAnnual: sa, wdAnnual: wa, diff: diff,
         changed: Math.abs(diff) >= 0.5,
+        oneSided: hasSap !== hasWd,         // wage-type mapping gap
+        onlyIn: hasSap && !hasWd ? 'SAP' : (!hasSap && hasWd ? 'Workday' : null),
         note: changeNote(code, info, diff, scheduleChanged)
       };
     });
@@ -112,7 +153,10 @@
     var emp = D.employees.find(function (e) { return e.id === state.empId; });
     var c = compare(emp);
     renderSwitcher(emp);
+    syncReviewChrome();
     el('app').innerHTML = ''
+      + (state.reviewMode ? renderReviewRoster(emp) : '')
+      + (state.reviewMode ? renderReviewCard(emp, c) : '')
       + renderIntro(emp, c)
       + renderHero(emp, c)
       + renderReassure(emp, c)
@@ -124,11 +168,117 @@
     wireDynamic();
   }
 
+  // Keep the toggle button, banner, and body class in sync with state.
+  function syncReviewChrome() {
+    document.body.classList.toggle('review-on', state.reviewMode);
+    var btn = el('reviewToggle');
+    if (btn) {
+      btn.classList.toggle('on', state.reviewMode);
+      btn.setAttribute('aria-pressed', state.reviewMode ? 'true' : 'false');
+      btn.textContent = state.reviewMode ? 'Exit review mode' : 'Review mode';
+    }
+    var banner = el('reviewBanner');
+    if (banner) banner.hidden = !state.reviewMode;
+  }
+
   function renderSwitcher(emp) {
     var opts = D.employees.map(function (e) {
-      return '<option value="' + e.id + '"' + (e.id === emp.id ? ' selected' : '') + '>' + esc(e.name) + ' — ' + esc(e.classification) + '</option>';
+      var mark = '';
+      if (state.reviewMode) {
+        var r = getReview(e.id);
+        mark = r.status === 'reviewed' ? ' ✓' : (r.status === 'followup' ? ' ⚑' : '');
+      }
+      return '<option value="' + e.id + '"' + (e.id === emp.id ? ' selected' : '') + '>' + esc(e.name) + ' — ' + esc(e.classification) + mark + '</option>';
     }).join('');
     el('whoSelect').innerHTML = opts;
+  }
+
+  // ---- Review: roster of all employees with status ------------------------
+  function renderReviewRoster(emp) {
+    var reviewed = 0, followup = 0, flagged = 0;
+    D.employees.forEach(function (e) {
+      var r = getReview(e.id);
+      if (r.status === 'reviewed') reviewed++;
+      if (r.status === 'followup') followup++;
+      if (hasFlags(r)) flagged++;
+    });
+    var chips = D.employees.map(function (e) {
+      var r = getReview(e.id);
+      var n = flaggedCodes(r).length;
+      var badge = n ? '<span class="rc-badge">' + n + '</span>' : '';
+      return '<button type="button" class="roster-chip ' + r.status + (e.id === emp.id ? ' active' : '') + '" data-id="' + e.id + '">'
+        + '<span class="rc-dot" aria-hidden="true"></span>'
+        + '<span class="rc-name">' + esc(e.name) + '</span>' + badge
+        + '</button>';
+    }).join('');
+    return ''
+      + '<section class="card review-roster">'
+      + '  <div class="rr-head">'
+      + '    <div class="rr-title">Review progress</div>'
+      + '    <div class="rr-stats">'
+      + '      <span class="rr-stat"><b>' + reviewed + '</b> of ' + D.employees.length + ' reviewed</span>'
+      + '      <span class="rr-stat">' + followup + ' need follow-up</span>'
+      + '      <span class="rr-stat">' + flagged + ' with flags</span>'
+      + '    </div>'
+      + '  </div>'
+      + '  <div class="roster-chips">' + chips + '</div>'
+      + '</section>';
+  }
+
+  // ---- Review: per-employee discrepancy tracking -------------------------
+  function renderReviewCard(emp, c) {
+    var r = getReview(emp.id);
+    var diffs = c.lines.filter(function (l) { return (l.changed || l.oneSided) && l.group !== 'employer'; });
+
+    var pills = ['unreviewed', 'reviewed', 'followup'].map(function (s) {
+      return '<button type="button" class="rv-pill ' + s + (r.status === s ? ' active' : '') + '" data-status="' + s + '">' + esc(statusLabel(s)) + '</button>';
+    }).join('');
+
+    var detected;
+    if (!diffs.length) {
+      detected = '<div class="rd-none">No SAP&#8596;Workday differences detected for this employee. Pay components match over the year'
+        + (c.scheduleChanged ? ' — the only change is the pay frequency.' : '.') + '</div>';
+    } else {
+      detected = '<div class="rd-list">' + diffs.map(function (l) {
+        var on = !!r.flags[l.code];
+        var sapPer = l.sapAnnual / c.sap.schedule.perYear;
+        var wdPer = l.wdAnnual / c.wd.schedule.perYear;
+        var deltaCls = l.diff > 0 ? 'up' : (l.diff < 0 ? 'down' : 'zero');
+        var deltaTxt = l.oneSided
+          ? '<span class="rd-gap">Mapping gap — appears in ' + esc(l.onlyIn) + ' only</span>'
+          : '<span class="rd-delta ' + deltaCls + '">' + signedMoney(l.diff) + ' / yr</span>';
+        return '<label class="rd-item' + (on ? ' on' : '') + '">'
+          + '<input type="checkbox" class="flagchk" data-code="' + l.code + '"' + (on ? ' checked' : '') + ' />'
+          + '<span class="rd-main"><span class="rd-label">' + esc(l.label) + '</span> ' + deltaTxt + '</span>'
+          + '<span class="rd-per">SAP ' + money(sapPer) + ' &rarr; WD ' + money(wdPer) + ' / check</span>'
+          + '</label>';
+      }).join('') + '</div>';
+    }
+
+    var flags = flaggedCodes(r);
+    var flagSummary = flags.length
+      ? '<div class="rc-flagged"><b>Flagged as discrepancy:</b> ' + flags.map(function (code) { return esc((D.catalog[code] && D.catalog[code].label) || code); }).join(', ') + '</div>'
+      : '<div class="rc-flagged none">No discrepancies flagged yet.</div>';
+
+    var netCls = Math.abs(c.netDiffAnnual) < 0.5 ? 'zero' : (c.netDiffAnnual > 0 ? 'up' : 'down');
+
+    return ''
+      + '<section class="card review-card">'
+      + '  <div class="rc-head">'
+      + '    <div>'
+      + '      <div class="rc-name-line">' + esc(emp.name) + ' <span class="rc-id">' + esc(emp.id) + '</span></div>'
+      + '      <div class="rc-meta">' + esc(emp.title) + ' · ' + esc(emp.classification) + ' · ' + esc(emp.location) + '</div>'
+      + '    </div>'
+      + '    <div class="rc-net ' + netCls + '">Net variance <b>' + signedMoney(c.netDiffAnnual) + '</b> / yr</div>'
+      + '  </div>'
+      + '  <div class="rc-status"><span class="rc-status-lab">Review status</span><div class="rv-pills">' + pills + '</div></div>'
+      + '  <div class="rc-section-lab">Detected differences (' + diffs.length + ') — check to flag as a discrepancy</div>'
+      + detected
+      + '  ' + flagSummary
+      + '  <label class="rc-notes-lab" for="reviewNotes">Reviewer notes</label>'
+      + '  <textarea id="reviewNotes" class="rc-notes" rows="3" placeholder="Notes / discrepancies for this employee…">' + esc(r.notes) + '</textarea>'
+      + '  <div class="rc-saved" id="rcSaved">Saved on this device</div>'
+      + '</section>';
   }
 
   function renderIntro(emp, c) {
@@ -265,7 +415,9 @@
       + '</section>';
   }
 
+  // ---- Breakdown: employee (collapsible) vs review (always-open detail) ---
   function renderBreakdown(emp, c) {
+    if (state.reviewMode) return renderBreakdownReview(emp, c);
     var open = state.showDetail;
     var body = '';
     if (open) {
@@ -308,7 +460,7 @@
       return '<div class="emp-row"><span>' + esc(l.label) + '</span><b>' + money0(l.wdAnnual) + ' / yr</b></div>'
         + '<div class="emp-plain">' + esc(l.plain) + '</div>';
     }).join('');
-    return '<div class="bd-group employer"><div class="bd-group-title">From your employer (a bonus on top — not taken from your pay)</div>' + items + '</div>';
+    return '<div class="bd-group employer"><div class="bd-group-title">From the university (a bonus on top — not taken from your pay)</div>' + items + '</div>';
   }
 
   function bdTotal(c) {
@@ -324,30 +476,174 @@
       + '</div>';
   }
 
+  // ---- Breakdown: REVIEW (explicit detail + flagging) --------------------
+  function renderBreakdownReview(emp, c) {
+    return ''
+      + '<section class="card breakdown review-bd">'
+      + '  <h3 class="card-title">Full breakdown — SAP vs Workday <span class="bd-review-tag">review detail</span></h3>'
+      + '  <p class="bd-basis">Exact annual figures with per-check amounts and variance (Workday − SAP). '
+      + 'Compared over a full year so the schedule change doesn\'t distort the picture. Check <b>Flag</b> on any line to record a discrepancy.</p>'
+      + bdGroupReview('Money in', 'in', c, emp)
+      + bdGroupReview('Money out (taxes & deductions)', 'out', c, emp)
+      + bdGroupReview('Employer contributions', 'employer', c, emp)
+      + bdTotalReview(c)
+      + '</section>';
+  }
+
+  function bdGroupReview(title, group, c, emp) {
+    var rows = c.lines.filter(function (l) { return l.group === group; });
+    if (!rows.length) return '';
+    rows.sort(function (a, b) { return b.wdAnnual - a.wdAnnual; });
+    var r = getReview(emp.id);
+    var sapPY = c.sap.schedule.perYear, wdPY = c.wd.schedule.perYear;
+    var html = '<div class="bd-group"><div class="bd-group-title">' + title + '</div>'
+      + '<table class="bd-table bd-table-review"><thead><tr>'
+      + '<th>Component</th><th class="n">SAP / yr</th><th class="n">WD / yr</th><th class="n">Δ / yr</th>'
+      + '<th class="n">SAP / chk</th><th class="n">WD / chk</th>'
+      + (group === 'employer' ? '' : '<th class="c">Flag</th>')
+      + '</tr></thead><tbody>';
+    rows.forEach(function (l) {
+      var on = !!r.flags[l.code];
+      var dCls = Math.abs(l.diff) < 0.5 ? 'zero' : (l.diff > 0 ? 'up' : 'down');
+      var gapTag = l.oneSided ? ' <span class="bd-gap-tag">' + esc(l.onlyIn) + ' only</span>' : '';
+      html += '<tr class="' + (on ? 'flagged ' : '') + (l.oneSided ? 'gap-row' : '') + '">'
+        + '<td><div class="bd-name"><span class="bd-code">' + esc(l.code) + '</span> ' + esc(l.label) + (l.varies ? ' <span class="bd-vary">varies</span>' : '') + gapTag + '</div></td>'
+        + '<td class="n">' + money(l.sapAnnual) + '</td>'
+        + '<td class="n">' + money(l.wdAnnual) + '</td>'
+        + '<td class="n bd-delta ' + dCls + '">' + (Math.abs(l.diff) < 0.005 ? '—' : signedMoney(l.diff)) + '</td>'
+        + '<td class="n">' + money(l.sapAnnual / sapPY) + '</td>'
+        + '<td class="n">' + money(l.wdAnnual / wdPY) + '</td>'
+        + (group === 'employer' ? '' : '<td class="c"><input type="checkbox" class="flagchk" data-code="' + l.code + '"' + (on ? ' checked' : '') + ' aria-label="Flag ' + esc(l.label) + '" /></td>')
+        + '</tr>';
+    });
+    return html + '</tbody></table></div>';
+  }
+
+  function bdTotalReview(c) {
+    return ''
+      + '<div class="bd-total review">'
+      + '  <table class="bd-table bd-table-review bd-total-table"><tbody>'
+      + '    <tr><td><b>Gross / yr</b></td><td class="n">' + money(c.sap.grossAnnual) + '</td><td class="n">' + money(c.wd.grossAnnual) + '</td>'
+      + '      <td class="n bd-delta ' + deltaClass(c.wd.grossAnnual - c.sap.grossAnnual) + '">' + signedMoney(c.wd.grossAnnual - c.sap.grossAnnual) + '</td>'
+      + '      <td class="n">' + money(c.sap.grossPerCheck) + '</td><td class="n">' + money(c.wd.grossPerCheck) + '</td></tr>'
+      + '    <tr><td><b>Net take-home / yr</b></td><td class="n">' + money(c.sap.netAnnual) + '</td><td class="n">' + money(c.wd.netAnnual) + '</td>'
+      + '      <td class="n bd-delta ' + deltaClass(c.netDiffAnnual) + '">' + signedMoney(c.netDiffAnnual) + '</td>'
+      + '      <td class="n">' + money(c.sap.netPerCheck) + '</td><td class="n">' + money(c.wd.netPerCheck) + '</td></tr>'
+      + '  </tbody></table>'
+      + '</div>';
+  }
+
+  function deltaClass(d) { return Math.abs(d) < 0.5 ? 'zero' : (d > 0 ? 'up' : 'down'); }
+
   function renderDisclaimer() {
     return ''
       + '<footer class="disclaimer">'
       + '  These figures come from <b>test runs</b> of the new Workday system using your real pay information, to help you plan ahead. '
       + '  They are an estimate — your final pay may differ slightly, and overtime and benefit choices can change the numbers. '
-      + '  Questions about your pay? Contact the Payroll team.'
+      + '  Questions about your pay? Contact the Johns Hopkins Payroll Shared Services team.'
       + '</footer>';
   }
 
+  // -------------------------------------------------------------------------
+  // Dynamic wiring (re-run after every render)
+  // -------------------------------------------------------------------------
   function wireDynamic() {
     var tgl = el('bdToggle');
     if (tgl) tgl.addEventListener('click', function () { state.showDetail = !state.showDetail; render(); });
+
+    if (!state.reviewMode) return;
+
+    // Roster chips → switch employee
+    Array.prototype.forEach.call(document.querySelectorAll('.roster-chip'), function (chip) {
+      chip.addEventListener('click', function () { switchEmployee(chip.getAttribute('data-id')); });
+    });
+
+    // Status pills
+    Array.prototype.forEach.call(document.querySelectorAll('.rv-pill'), function (pill) {
+      pill.addEventListener('click', function () {
+        getReview(state.empId).status = pill.getAttribute('data-status');
+        saveReviews();
+        render();
+      });
+    });
+
+    // Flag checkboxes (in the detected list AND the detail table)
+    Array.prototype.forEach.call(document.querySelectorAll('.flagchk'), function (box) {
+      box.addEventListener('change', function () {
+        getReview(state.empId).flags[box.getAttribute('data-code')] = box.checked;
+        saveReviews();
+        render();
+      });
+    });
+
+    // Notes — persist without re-rendering (so the field keeps focus)
+    var notes = el('reviewNotes');
+    if (notes) {
+      notes.addEventListener('input', function () {
+        getReview(state.empId).notes = notes.value;
+        saveReviews();
+        var saved = el('rcSaved');
+        if (saved) { saved.textContent = 'Saved ✓'; saved.classList.add('flash'); }
+      });
+    }
+  }
+
+  function switchEmployee(id) {
+    state.empId = id;
+    state.showDetail = false;
+    window.scrollTo(0, 0);
+    render();
+  }
+
+  // -------------------------------------------------------------------------
+  // CSV export of all review notes
+  // -------------------------------------------------------------------------
+  function csvCell(s) {
+    s = String(s == null ? '' : s);
+    return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+  function exportReviewCsv() {
+    var headers = ['Employee ID', 'Name', 'Title', 'Classification', 'Location', 'Review status', 'Schedule change', 'Net variance (annual, WD-SAP)', 'Flagged components', 'Notes'];
+    var lines = [headers.map(csvCell).join(',')];
+    D.employees.forEach(function (emp) {
+      var c = compare(emp);
+      var r = getReview(emp.id);
+      var flagged = flaggedCodes(r).map(function (code) { return (D.catalog[code] && D.catalog[code].label) || code; }).join('; ');
+      lines.push([
+        emp.id, emp.name, emp.title, emp.classification, emp.location,
+        statusLabel(r.status),
+        c.scheduleChanged ? (emp.sap.schedule.name + ' -> ' + emp.workday.schedule.name) : 'No change',
+        (c.netDiffAnnual >= 0 ? '+' : '') + c.netDiffAnnual.toFixed(2),
+        flagged, r.notes
+      ].map(csvCell).join(','));
+    });
+    download('jhu-paycheck-review.csv', lines.join('\r\n'));
+  }
+  function download(name, text) {
+    try {
+      var blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 0);
+    } catch (e) {
+      window.prompt('Copy the CSV below:', text);
+    }
   }
 
   // -------------------------------------------------------------------------
   // Boot
   // -------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', function () {
-    el('whoSelect').addEventListener('change', function (e) {
-      state.empId = e.target.value;
-      state.showDetail = false;
-      window.scrollTo(0, 0);
-      render();
-    });
+    el('whoSelect').addEventListener('change', function (e) { switchEmployee(e.target.value); });
+
+    var rt = el('reviewToggle');
+    if (rt) rt.addEventListener('click', function () { state.reviewMode = !state.reviewMode; window.scrollTo(0, 0); render(); });
+
+    var rx = el('reviewExport');
+    if (rx) rx.addEventListener('click', exportReviewCsv);
+
     render();
   });
 })();

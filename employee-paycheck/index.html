@@ -3,23 +3,35 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Your Paycheck Preview — Workday</title>
+  <title>Paycheck Preview — Johns Hopkins University</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
-    <div class="title">
-      <div class="logo">💵</div>
-      <div>
-        <h1>Your Paycheck Preview</h1>
-        <div class="crumb">A look at your pay in our new system</div>
+    <div class="brand">
+      <img class="jhu-logo" src="jhu-logo-white.png" alt="Johns Hopkins University" />
+      <div class="brand-div" aria-hidden="true"></div>
+      <div class="brand-app">
+        <h1>Paycheck Preview</h1>
+        <div class="crumb">Your pay in our new Workday system</div>
       </div>
     </div>
-    <div class="who">
-      <label for="whoSelect">Viewing as</label>
-      <select id="whoSelect" aria-label="Choose employee"></select>
+    <div class="topbar-right">
+      <div class="who">
+        <label for="whoSelect">Viewing as</label>
+        <select id="whoSelect" aria-label="Choose employee"></select>
+      </div>
+      <button id="reviewToggle" class="review-btn" type="button" aria-pressed="false">
+        Review mode
+      </button>
     </div>
   </header>
+
+  <div id="reviewBanner" class="review-banner" hidden>
+    <span class="rb-dot" aria-hidden="true"></span>
+    <span class="rb-text"><b>Review mode</b> — administrative view. Employees never see this. Notes are saved on this device.</span>
+    <button id="reviewExport" class="rb-export" type="button">Export review notes (CSV)</button>
+  </div>
 
   <main class="wrap">
     <div id="app"></div>

@@ -18,11 +18,14 @@ proration, retroactive adjustment, or rounding. Supports CSV import/export so re
 extracts can be dropped in.
 
 ### 💵 `employee-paycheck/` — for the employee
-A simple, reassuring preview of how an employee's paycheck will look in Workday. It's
-built for the change that affects non-exempt staff most: moving from **semi-monthly
-(24 paychecks a year) to weekly (52 a year)** — where each check is smaller but
-monthly and yearly take-home stay about the same. It also explains the timing of the
-switch and any real differences in plain language.
+A simple, reassuring preview of how an employee's paycheck will look in Workday,
+**branded for Johns Hopkins University**. It's built for the change that affects
+non-exempt staff most: moving from **semi-monthly (24 paychecks a year) to weekly
+(52 a year)** — where each check is smaller but monthly and yearly take-home stay
+about the same. It also explains the timing of the switch and any real differences in
+plain language. A built-in **administrative review mode** lets the team add explicit
+payroll detail and track per-employee discrepancies (flags, status, notes, CSV
+export) while validating each person's parallel-run result.
 
 ## Viewing the apps
 

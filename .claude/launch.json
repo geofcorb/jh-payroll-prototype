@@ -4,13 +4,25 @@
     {
       "name": "payroll-compare",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8123", "--directory", "payroll-compare"],
+      "runtimeArgs": [
+        "-c",
+        "\nimport sys\nsys.path[:] = [x for x in sys.path if x]\nimport os, functools, http.server\nargs = sys.argv[1:]\ndirectory = None; port = 8000; rest = []\ni = 0\nwhile i < len(args):\n    a = args[i]\n    if a in ('--directory', '-d'):\n        i += 1; directory = args[i]\n    elif a.startswith('--directory='):\n        directory = a.split('=', 1)[1]\n    else:\n        rest.append(a)\n    i += 1\nif directory is None and rest: directory = rest.pop(0)\nif rest: port = int(rest[0])\ntry:\n    os.chdir(directory)\nexcept OSError:\n    pass\nhttp.server.ThreadingHTTPServer.allow_reuse_address = True\nhttp.server.ThreadingHTTPServer(('', port),\n    functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)).serve_forever()\n",
+        "--directory",
+        "/tmp/jh-payroll-preview/payroll-compare",
+        "8123"
+      ],
       "port": 8123
     },
     {
       "name": "employee-paycheck",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8124", "--directory", "employee-paycheck"],
+      "runtimeArgs": [
+        "-c",
+        "\nimport sys\nsys.path[:] = [x for x in sys.path if x]\nimport os, functools, http.server\nargs = sys.argv[1:]\ndirectory = None; port = 8000; rest = []\ni = 0\nwhile i < len(args):\n    a = args[i]\n    if a in ('--directory', '-d'):\n        i += 1; directory = args[i]\n    elif a.startswith('--directory='):\n        directory = a.split('=', 1)[1]\n    else:\n        rest.append(a)\n    i += 1\nif directory is None and rest: directory = rest.pop(0)\nif rest: port = int(rest[0])\ntry:\n    os.chdir(directory)\nexcept OSError:\n    pass\nhttp.server.ThreadingHTTPServer.allow_reuse_address = True\nhttp.server.ThreadingHTTPServer(('', port),\n    functools.partial(http.server.SimpleHTTPRequestHandler, directory=directory)).serve_forever()\n",
+        "--directory",
+        "/tmp/jh-payroll-preview/employee-paycheck",
+        "8124"
+      ],
       "port": 8124
     }
   ]

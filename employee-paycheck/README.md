@@ -1,8 +1,9 @@
-# Employee Paycheck Preview — SAP → Workday
+# Employee Paycheck Preview — SAP → Workday (Johns Hopkins University)
 
 A simple, reassuring, **employee-facing** view of how a person's pay will look in
-the future Workday system, based on parallel-run testing. It is the companion to
-the implementation-team tool in `../payroll-compare/` — same underlying data idea,
+the future Workday system, based on parallel-run testing. Branded for **Johns
+Hopkins University** (Heritage Blue + Spirit Blue). It is the companion to the
+implementation-team tool in `../payroll-compare/` — same underlying data idea,
 completely different audience and purpose.
 
 > **Team tool (`payroll-compare/`):** forensic — find and explain every discrepancy.
@@ -22,6 +23,9 @@ No build, no server, no install. **Double-click `index.html`**. Use the
 **"Viewing as"** menu (top-right) to switch between sample employees. Everything
 runs locally; no data leaves the page. It's designed to read well on a phone.
 
+The **"Review mode"** button (top-right) is for administrators — see
+[Review mode](#review-mode-for-administrators) below.
+
 ---
 
 ## What an employee sees
@@ -38,8 +42,8 @@ runs locally; no data leaves the page. It's designed to read well on a phone.
 4. **Why the new paycheck is smaller** — a simple visual: 2 bigger checks a month
    vs 4–5 smaller ones, same total.
 5. **When you'll get paid** — the weekly "in arrears" timing, a transition pay
-   calendar, and a prominent, positive note that **the company covers the 3–4 day
-   gap** during the switch, so no one is short.
+   calendar, and a prominent, positive note that **the university covers the 3–4
+   day gap** during the switch, so no one is short.
 6. **What's a little different (and why)** — plain-language explanations of any
    genuine changes (e.g. "federal income tax: about $120 more is withheld per year —
    this is withholding, not what you owe; you can update your elections").
@@ -48,15 +52,48 @@ runs locally; no data leaves the page. It's designed to read well on a phone.
    *Money out*, plus an *employer contributions* note. Each line in plain English.
 8. **A clear disclaimer** that these are estimates from test runs, for planning.
 
-The story adapts automatically:
+The story adapts automatically. The sample roster is fictitious JHU staff — mostly
+non-exempt (the group the semi-monthly → weekly change affects), plus one exempt
+control:
 
-| Sample employee | Situation it demonstrates |
-|---|---|
-| **David Kim** (Non-exempt) | Frequency change only — take-home identical. The core reassurance case. |
-| **Maria Gonzalez** (Non-exempt) | Frequency change **plus** a real ~$120/yr higher federal withholding, explained plainly. |
-| **Tyrone Williams** (Non-exempt) | Frequency change only; no 401(k); overtime variability noted. |
-| **Sarah Chen** (Exempt) | **No** frequency change; one real difference (health premium up for new plan year). |
-| **James Brown** (Exempt) | Nothing changes at all — the "no surprises" control. |
+| Sample employee | Role | Situation it demonstrates |
+|---|---|---|
+| **Aaliyah Robinson** (Non-exempt) | Administrative Coordinator | Frequency change only — take-home identical. The core reassurance case. |
+| **Marcus Bennett** (Non-exempt) | Research Technologist | Frequency change **plus** a real ~$130/yr higher federal withholding, with overtime. |
+| **Priya Nair** (Non-exempt) | Laboratory Technician | Frequency change **plus** one real difference (health premium up ~$240/yr for the new plan year); uses an HSA. |
+| **Daniel Foster** (Non-exempt) | Facilities Maintenance Mechanic | Heavy overtime — the strongest "weekly actually helps" case; totals unchanged. |
+| **Denise Powell** (Non-exempt) | Student Accounts Specialist | Frequency change **plus** a small Maryland withholding update (~$90/yr). |
+| **Grace Liu** (Exempt) | Grants & Contracts Analyst | **No** frequency change and every amount matches — the "nothing changes" control. |
+
+> Retirement is shown as a **403(b)** with an employer contribution (the university
+> plan), and state tax is **Maryland** state & local. All names and figures are
+> fictitious.
+
+---
+
+## Review mode (for administrators)
+
+A toggle in the top-right switches the page from the employee view to an
+**administrative review view** of the *same* employee page, for the team validating
+each person's parallel-run result before it goes out. It adds, without changing what
+the employee sees when it's off:
+
+- **A review banner** making clear this is the internal view (employees never see it).
+- **Review progress** across the whole roster — a chip per employee, colour-coded by
+  status (unreviewed / reviewed / needs follow-up) with a flag count; click to jump.
+- **Per-employee discrepancy tracking** — an auto-detected list of every SAP↔Workday
+  difference (and wage-type **mapping gaps**), each with a checkbox to **flag it as a
+  discrepancy**, a **review status** (Unreviewed / Reviewed / Needs follow-up), and a
+  free-text **notes** field.
+- **Explicit payroll detail** — the full breakdown, always open, with exact figures
+  to the cent, **per-check** amounts for each system, the annual **variance
+  (Workday − SAP)** per line, and mapping-gap highlighting.
+- **CSV export** of all review notes (status, flagged components, net variance, notes
+  per employee), consistent with the team tool's export.
+
+Review state (flags, status, notes) is saved on the device via `localStorage`, so it
+survives a reload. It stays local to the browser — nothing is sent anywhere — and the
+CSV export is the durable, shareable record.
 
 ---
 
